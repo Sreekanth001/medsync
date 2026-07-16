@@ -1,13 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.db.database import engine
+from app.db.base import Base
+
+# Create all tables on startup
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
-# Set all CORS enabled origins
+# CORS - allow all origins (update in production if needed)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,6 +26,19 @@ from app.api.v1 import dashboard, hospitals, hospital_resources, doctors, nurses
 @app.get("/")
 def root():
     return {"message": "Welcome to MedSync AI API (LangGraph Edition)"}
+
+@app.on_event("startup")
+async def startup_event():
+    """Seed database with initial data if empty."""
+    from app.db.database import SessionLocal
+    from app.models.domain import Doctor
+    db = SessionLocal()
+    try:
+        if db.query(Doctor).count() == 0:
+            from app.db.seed import seed_db
+            seed_db()
+    finally:
+        db.close()
 
 app.include_router(workflow_api.router, prefix=f"{settings.API_V1_STR}/workflow", tags=["Workflow"])
 app.include_router(dashboard.router, prefix=f"{settings.API_V1_STR}/dashboard", tags=["Dashboard"])
